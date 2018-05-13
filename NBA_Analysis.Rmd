@@ -4,3 +4,515 @@ author: "Emilio Cabrera"
 date: "5/13/2018"
 output: html_document
 ---
+
+
+```{r Packages}
+
+#install.packages("xml2")
+library(rvest)
+
+#install.packages("stringr")
+library("stringr")
+
+#install.packages("ggplot2")
+library(ggplot2)
+
+#install.packages("kableExtra")
+library(kableExtra)
+
+#install.packages("tables")
+library(tables)
+
+#install.packages("shiny")
+library("shiny")
+```
+
+#Web-Scrape
+```{r Websrapping}
+url_espn = "http://www.espn.com/nba/teams"
+
+web_overview = read_html(url_espn)
+
+#Find all team pages
+urls_team = web_overview %>%
+  html_nodes("#content > div > div.span-4 > div > div > div > div.mod-content > ul > li > div > span > a:nth-child(1)") %>%
+  html_attr("href") %>%
+  gsub(".*([[:alpha:]]{3})$", "\\1", .) %>%
+  paste0(url_espn, "/_/name/", .)
+
+team_acs = str_extract( urls_team, pattern = "[a-z]{3}$")
+teams =  paste("http://www.espn.com/nba/team/stats/_/name/", team_acs, sep = "" )
+
+#find all teams
+data_teams = sapply(teams, FUN = c)
+
+stats = vector('list', length(data_teams))
+
+for(i in seq_along(data_teams)){
+
+  data = read_html(data_teams[i]) %>%
+  html_nodes("#my-players-table > div.mod-container.mod-table > div:nth-child(2) > table, #my-players-table > div.mod-container.mod-table > div:nth-child(3) > table") %>%
+    html_table( fill = TRUE, header = T)
+
+  data = data[sapply(data, FUN = nrow) >= 1]
+  
+stats[[i]] = data
+}
+```
+
+
+#Raw Data Cleaning
+```{r Data Cleaning}
+
+#Rename Function
+rename = function(df){
+  colnames(df) = df[1,]
+  df = df[-1,]
+}
+
+
+clean_data = lapply(stats, function(x) lapply(x, rename))
+
+team_data = lapply(clean_data, function(x) merge( x[[1]], x[[2]], by = "PLAYER") )
+```
+
+#Team Conference
+```{r Team Divisions}
+##EAST
+#Atlantic
+Boston_Celtics = team_data[[1]]
+Brooklyn_Nets = team_data[[2]]
+NewYork_Knicks = team_data[[3]]
+Philadelphia_76ers = team_data[[4]]
+Toronto_Raptors =team_data[[5]]
+#Central
+Chicago_Bulls = team_data[[11]]
+Cleveland_Caveliers = team_data[[12]]
+Detroit_Pistons = team_data[[13]]
+Indiana_Pacers = team_data[[14]]
+Milwaukee_Bucks = team_data[[15]]
+#Southeast
+Atlanta_Hawks = team_data[[21]]
+Charlotte_Hornets = team_data[[22]]
+Miami_Heat = team_data[[23]]
+Orlando_Magic = team_data[[24]]
+Washington_Wizards = team_data[[25]]
+
+##WEST
+#Pacific
+GoldenState_Warriors = team_data[[6]]
+LA_Clippers = team_data[[7]]
+LosAngeles_Lakers = team_data[[8]]
+Pheonix_Suns = team_data[[9]]
+Sacremento_Kings = team_data[[10]]
+#Southwest
+Dallas_Mavericks = team_data[[16]]
+Houston_Rockets = team_data[[17]]
+Memphis_Grizzlies = team_data[[18]]
+NewOrleans_Pelicans = team_data[[19]]
+SanAntonio_Spurs = team_data[[20]]
+#Northwest
+Denver_Nuggets = team_data[[26]]
+Minnesota_Timberwolves = team_data[[27]]
+OklahomaCity_Thunder = team_data[[28]]
+Portland_TrailBlazers = team_data[[29]]
+Utah_Jazz = team_data[[30]]
+```
+
+#POWER FUNCTION
+```{r PF}
+
+POWER = function(home_team, away_team){
+  
+   #Get home/away Team Names
+  home_name = deparse(substitute(home_team))
+  away_name = deparse(substitute(away_team))
+  
+  #Get rid of the NA Columns
+  home_team = home_team[!is.na(names(home_team))]
+  away_team = away_team[!is.na(names(away_team))]
+  
+  #Get rid of bench players and total row
+  home_team = home_team[which(home_team$PLAYER != 'Totals'),]
+  away_team = away_team[which(away_team$PLAYER != 'Totals'),]
+  
+  #Vectoriz to integers
+  home_team[, 2:28] <- sapply(home_team[, 2:28], as.numeric)
+  away_team[, 2:28] <- sapply(away_team[, 2:28], as.numeric)
+  
+  #Expected Points Per Mintue
+  n = length(home_team$PLAYER)
+  home_EPPM <- numeric(n)
+  for(i in 1:n){
+    home_EPPM[i] = ((home_team$`3PA`[i]*home_team$`3P%`[i]*3)
+                    + (home_team$`2PA`[i]*home_team$`2P%`[i]*2) 
+                    + (home_team$FTA[i]*home_team$`FT%`[i]*1)) / home_team$MIN[i]
+  }
+  
+  m = length(away_team$PLAYER)
+  away_EPPM <- numeric(m)
+  for(j in 1:m){
+    away_EPPM[j] = ((away_team$`3PA`[j]*away_team$`3P%`[j]*3)
+                    + (away_team$`2PA`[j]*away_team$`2P%`[j]*2) 
+                    + (away_team$FTA[j]*away_team$`FT%`[j]*1)) / away_team$MIN[j]
+  }
+  
+  #Player Averages
+  home_player_averages = home_EPPM * home_team$MIN
+  away_player_average = away_EPPM * away_team$MIN
+  
+  #Expected Team Scores
+  home_score = round( sum(home_player_averages), 2)
+  away_score = round( sum(away_player_average), 2)
+  
+  #Point Spread
+  spread = round(home_score - away_score, 2)
+  
+  #Over/Under
+  OU = round(home_score + away_score, 2)
+
+  #Creata Data Frame
+  df = data.frame( home = home_name,
+                   home_score = home_score,
+                   away_score = away_score,
+                   away = away_name,
+                   spread = spread,
+                   over_under = OU)
+  colnames(df) = c("Home Team", "Expected Home Score", "Expected Away Score", "Away Team", "Point Spread", "Over/Under")
+  
+  #Create Table
+  table = df
+  
+  #Create Visualization
+  if( spread > 0  ){
+  New_new = data.frame(
+  x1 = -spread,
+  x2 = 0,
+  y1 = .2,
+  y2 = .35,
+  x = c(-22, 22),
+  y = c(.5, .5),
+  text  = c("Home Team", "Away Team") )
+
+  graph = ggplot(New_new, aes( xmin=x1, xmax=x2, ymin=y1, ymax=y2, x = x, y = y )) +
+  geom_rect(color = "blue", fill = "orange") +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_x_continuous( breaks =  seq(from = -25, to = 25, by=2), limits = c(-25,25) ) +
+  theme_dark() +
+  geom_text( aes( label = text), color = "white" ) +
+  theme(axis.title.y=element_blank(),
+             axis.text.y=element_blank(),
+             axis.ticks.y=element_blank())
+  newlist = list("graph" = graph, "table" = table)
+  return(newlist)
+} else if (spread < 0){
+  New_new = data.frame(
+  x1 = 0,
+  x2 = abs(spread),
+  y1 = .2,
+  y2 = .35,
+  x = c(-22, 22),
+  y = c(.5, .5),
+  text  = c("Home Team", "Away Team") )
+
+  graph = ggplot(New_new, aes( xmin=x1, xmax=x2, ymin=y1, ymax=y2, x = x, y = y )) +
+    geom_rect(color = "blue", fill = "orange") +
+    scale_y_continuous(limits=c(0,1)) +
+    scale_x_continuous( breaks =  seq(from = -25, to = 25, by=2), limits = c(-25,25) ) +
+    theme_dark() +
+    geom_text( aes( label = text), color = "white" ) +
+    theme(axis.title.y=element_blank(),
+             axis.text.y=element_blank(),
+             axis.ticks.y=element_blank())
+
+newlist = list("graph" = graph, "table" = table)
+return(newlist)
+}
+}
+
+
+
+
+
+
+
+```
+
+#Shiny Application
+
+```{r}
+ui = fluidPage(
+ titlePanel("Power Application"), # Title
+ sidebarLayout(
+ sidebarPanel(
+ h3("Select Teams"), 
+
+ # Dropdown Menu with fixed Choices
+ selectInput(inputId = "home_shiny",
+                  label = "Choose an Home Team",
+                  choices = c("Boston_Celtics",
+"Brooklyn_Nets",
+"NewYork_Knicks", 
+"Philadelphia_76ers", 
+"Toronto_Raptors",
+"Chicago_Bulls", 
+"Cleveland_Caveliers",
+"Detroit_Pistons",
+"Indiana_Pacers", 
+"Milwaukee_Bucks",
+"Atlanta_Hawks",
+"Charlotte_Hornets",
+"Miami_Heat",
+"Orlando_Magic",
+"Washington_Wizards",
+"GoldenState_Warriors", 
+"LA_Clippers",
+"LosAngeles_Lakers",
+"Pheonix_Suns",
+"Sacremento_Kings",
+"Dallas_Mavericks",
+"Houston_Rockets",
+"Memphis_Grizzlies",
+"NewOrleans_Pelicans",
+"SanAntonio_Spurs",
+"Denver_Nuggets",
+"Minnesota_Timberwolves",
+"OklahomaCity_Thunder",
+"Portland_TrailBlazers",
+"Utah_Jazz")),
+
+ # Numeric Field
+selectInput(inputId = "away_shiny",
+                  label = "Choose an Away Team",
+                  choices = c("Boston_Celtics",
+"Brooklyn_Nets",
+"NewYork_Knicks", 
+"Philadelphia_76ers", 
+"Toronto_Raptors",
+"Chicago_Bulls", 
+"Cleveland_Caveliers",
+"Detroit_Pistons",
+"Indiana_Pacers", 
+"Milwaukee_Bucks",
+"Atlanta_Hawks",
+"Charlotte_Hornets",
+"Miami_Heat",
+"Orlando_Magic",
+"Washington_Wizards",
+"GoldenState_Warriors", 
+"LA_Clippers",
+"LosAngeles_Lakers",
+"Pheonix_Suns",
+"Sacremento_Kings",
+"Dallas_Mavericks",
+"Houston_Rockets",
+"Memphis_Grizzlies",
+"NewOrleans_Pelicans",
+"SanAntonio_Spurs",
+"Denver_Nuggets",
+"Minnesota_Timberwolves",
+"OklahomaCity_Thunder",
+"Portland_TrailBlazers",
+"Utah_Jazz")),
+
+ submitButton("Load Data") # Update data
+ ), # close: sidebarPanel()
+ mainPanel(
+  h3("Graph"),
+   plotOutput("graph"),
+   
+   h3("Table"),
+   tableOutput("table")
+ ) # close: mainPanel()
+ ) # close: sidebarLayout()
+) # close: fluidPage()
+
+server = function(input, output){
+  home_team = reactive({
+    if(input$home_shiny == "Boston_Celtics"){
+      Boston_Celtics
+    }
+    else if(input$home_shiny == "Brooklyn_Nets"){
+      Brooklyn_Nets
+    }
+    else if(input$home_shiny == "NewYork_Knicks"){
+      NewYork_Knicks
+      }
+    else if(input$home_shiny == "Philadelphia_76ers"){
+      Philadelphia_76ers
+      }
+    else if(input$home_shiny == "Toronto_Raptors"){
+      Toronto_Raptors
+    }
+    else if(input$home_shiny == "Chicago_Bulls"){
+      Chicago_Bulls
+    }
+    else if(input$home_shiny == "Cleveland_Caveliers"){
+      Cleveland_Caveliers
+    }
+    else if(input$home_shiny == "Detroit_Pistons"){
+      Detroit_Pistons
+    }
+    else if(input$home_shiny == "Indiana_Pacers"){
+      Indiana_Pacers
+    }
+    else if(input$home_shiny == "Milwaukee_Bucks"){
+      Milwaukee_Bucks
+    }
+    else if(input$home_shiny == "Atlanta_Hawks"){
+      Atlanta_Hawks
+    }
+    else if(input$home_shiny == "Charlotte_Hornets"){
+      Charlotte_Hornets
+    }
+    else if(input$home_shiny == "Miami_Heat"){
+      Miami_Heat
+    }
+    else if(input$home_shiny == "Orlando_Magic"){
+      Orlando_Magic
+    }
+    else if(input$home_shiny == "Washington_Wizards"){
+      Washington_Wizards
+    }
+    else if(input$home_shiny == "GoldenState_Warriors"){
+      GoldenState_Warriors
+    }
+    else if(input$home_shiny == "LA_Clippers"){
+      LA_Clippers
+    }
+    else if(input$home_shiny == "LosAngeles_Lakers"){
+      LosAngeles_Lakers
+    }
+    else if(input$home_shiny == "Pheonix_Suns"){
+      Pheonix_Suns
+    }
+    else if(input$home_shiny == "Sacremento_Kings"){
+      Sacremento_Kings
+    }
+    else if(input$home_shiny == "Dallas_Mavericks"){
+      Dallas_Mavericks
+    }
+    else if(input$home_shiny == "Houston_Rockets"){
+      Houston_Rockets
+    }
+    else if(input$home_shiny == "Memphis_Grizzlies"){
+      Memphis_Grizzlies
+    }
+    else if(input$home_shiny == "NewOrleans_Pelicans"){
+      NewOrleans_Pelicans
+    }
+    else if(input$home_shiny == "SanAntonio_Spurs"){
+      SanAntonio_Spurs
+    }
+    else if(input$home_shiny == "Denver_Nuggets"){
+      Denver_Nuggets
+    }
+    else if(input$home_shiny == "Minnesota_Timberwolves"){
+     Minnesota_Timberwolves
+    }
+    else if(input$home_shiny == "OklahomaCity_Thunder"){
+      OklahomaCity_Thunder
+    }
+    else{
+      Utah_Jazz
+    }
+    }) #close reactive()
+  away_team = reactive({
+    if(input$away_shiny == "Boston_Celtics"){
+      Boston_Celtics
+    }
+    else if(input$away_shiny == "Brooklyn_Nets"){
+      Brooklyn_Nets
+    }
+    else if(input$away_shiny == "NewYork_Knicks"){
+      NewYork_Knicks
+      }
+    else if(input$away_shiny == "Philadelphia_76ers"){
+      Philadelphia_76ers
+      }
+    else if(input$away_shiny == "Toronto_Raptors"){
+      Toronto_Raptors
+    }
+    else if(input$away_shiny == "Chicago_Bulls"){
+      Chicago_Bulls
+    }
+    else if(input$away_shiny == "Cleveland_Caveliers"){
+      Cleveland_Caveliers
+    }
+    else if(input$away_shiny == "Detroit_Pistons"){
+      Detroit_Pistons
+    }
+    else if(input$away_shiny == "Indiana_Pacers"){
+      Indiana_Pacers
+    }
+    else if(input$away_shiny == "Milwaukee_Bucks"){
+      Milwaukee_Bucks
+    }
+    else if(input$away_shiny == "Atlanta_Hawks"){
+      Atlanta_Hawks
+    }
+    else if(input$away_shiny == "Charlotte_Hornets"){
+      Charlotte_Hornets
+    }
+    else if(input$away_shiny == "Miami_Heat"){
+      Miami_Heat
+    }
+    else if(input$away_shiny == "Orlando_Magic"){
+      Orlando_Magic
+    }
+    else if(input$away_shiny == "Washington_Wizards"){
+      Washington_Wizards
+    }
+    else if(input$away_shiny == "GoldenState_Warriors"){
+      GoldenState_Warriors
+    }
+    else if(input$away_shiny == "LA_Clippers"){
+      LA_Clippers
+    }
+    else if(input$away_shiny == "LosAngeles_Lakers"){
+      LosAngeles_Lakers
+    }
+    else if(input$away_shiny == "Pheonix_Suns"){
+      Pheonix_Suns
+    }
+    else if(input$away_shiny == "Sacremento_Kings"){
+      Sacremento_Kings
+    }
+    else if(input$away_shiny == "Dallas_Mavericks"){
+      Dallas_Mavericks
+    }
+    else if(input$away_shiny == "Houston_Rockets"){
+      Houston_Rockets
+    }
+    else if(input$away_shiny == "Memphis_Grizzlies"){
+      Memphis_Grizzlies
+    }
+    else if(input$away_shiny == "NewOrleans_Pelicans"){
+      NewOrleans_Pelicans
+    }
+    else if(input$away_shiny == "SanAntonio_Spurs"){
+      SanAntonio_Spurs
+    }
+    else if(input$away_shiny == "Denver_Nuggets"){
+      Denver_Nuggets
+    }
+    else if(input$away_shiny == "Minnesota_Timberwolves"){
+     Minnesota_Timberwolves
+    }
+    else if(input$away_shiny == "OklahomaCity_Thunder"){
+      OklahomaCity_Thunder
+    }
+    else{
+      Utah_Jazz
+    }
+    })
+  
+  output$graph = renderPlot({POWER(home_team(),away_team())["graph"]})
+  output$table = renderTable({(POWER(home_team(),away_team()))["table"]})
+}
+shinyApp(ui = ui, server = server)
+```
+
+```{r}
+write.csv(Boston_Celtics, "Boston_Celtics.csv")
+```
