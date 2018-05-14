@@ -124,7 +124,7 @@ Utah_Jazz = team_data[[30]]
 
 POWER = function(home_team, away_team){
   
-   #Get home/away Team Names
+  #Get home/away Team Names
   home_name = deparse(substitute(home_team))
   away_name = deparse(substitute(away_team))
   
@@ -514,5 +514,26 @@ shinyApp(ui = ui, server = server)
 ```
 
 ```{r}
+
+Boston_Celtics = Boston_Celtics[!is.na(names(Boston_Celtics))]
+Boston_Celtics = Boston_Celtics[which(Boston_Celtics$PLAYER != 'Totals'),]
+Boston_Celtics[, 2:28] <- sapply(Boston_Celtics[, 2:28], as.numeric)
 write.csv(Boston_Celtics, "Boston_Celtics.csv")
+
+
+Cleveland_Caveliers = Cleveland_Caveliers[!is.na(names(Cleveland_Caveliers))]
+Cleveland_Caveliers = Cleveland_Caveliers[which(Cleveland_Caveliers$PLAYER != 'Totals'),]
+Cleveland_Caveliers[, 2:28] <- sapply(Cleveland_Caveliers[, 2:28], as.numeric)
+write.csv(Cleveland_Caveliers, "Cleveland_Caveliers.csv")
+
+Houston_Rockets = Houston_Rockets[!is.na(names(Houston_Rockets))]
+Houston_Rockets = Houston_Rockets[which(Houston_Rockets$PLAYER != 'Totals'),]
+Houston_Rockets[, 2:28] <- sapply(Houston_Rockets[, 2:28], as.numeric)
+write.csv(Houston_Rockets, "Houston_Rockets.csv")
+
+GoldenState_Warriors = GoldenState_Warriors[!is.na(names(GoldenState_Warriors))]
+GoldenState_Warriors = GoldenState_Warriors[which(GoldenState_Warriors$PLAYER != 'Totals'),]
+GoldenState_Warriors[, 2:28] <- sapply(GoldenState_Warriors[, 2:28], as.numeric)
+write.csv(GoldenState_Warriors, "GoldenState_Warriors.csv")
+
 ```
