@@ -514,7 +514,6 @@ shinyApp(ui = ui, server = server)
 ```
 
 ```{r}
-
 Boston_Celtics = Boston_Celtics[!is.na(names(Boston_Celtics))]
 Boston_Celtics = Boston_Celtics[which(Boston_Celtics$PLAYER != 'Totals'),]
 Boston_Celtics[, 2:28] <- sapply(Boston_Celtics[, 2:28], as.numeric)
@@ -535,5 +534,4 @@ GoldenState_Warriors = GoldenState_Warriors[!is.na(names(GoldenState_Warriors))]
 GoldenState_Warriors = GoldenState_Warriors[which(GoldenState_Warriors$PLAYER != 'Totals'),]
 GoldenState_Warriors[, 2:28] <- sapply(GoldenState_Warriors[, 2:28], as.numeric)
 write.csv(GoldenState_Warriors, "GoldenState_Warriors.csv")
-
 ```
